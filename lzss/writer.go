@@ -11,17 +11,17 @@ type writer interface {
 }
 
 type compressor struct {
-	 w writer
-	 windowLen int
-	 err error
+	w         writer
+	windowLen int
 }
 
 func (c *compressor) Write(p []byte) (n int, err error) {
-	for _,b := range p {
+	for _, b := range p {
 		err = c.w.WriteByte(b)
 		if err != nil {
-			n += 1
+			return n, err
 		}
+		n += 1
 	}
 
 	return n, err
@@ -31,14 +31,14 @@ func (c *compressor) Close() error {
 	return c.w.Flush()
 }
 
-func NewWriter(w io.Writer, windowLen int) io.WriteCloser {
-	bw, ok := w.(writer)
-	if !ok {
-		bw = bufio.NewWriter(w)
-	}
+func NewWriter(w io.Writer) io.WriteCloser {
+	return NewWriterWindow(w, 4096)
+}
+
+func NewWriterWindow(w io.Writer, windowLen int) io.WriteCloser {
 
 	return &compressor{
-		w: bw,
+		w:         bufio.NewWriter(w),
 		windowLen: windowLen,
 	}
 }

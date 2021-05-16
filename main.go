@@ -28,7 +28,7 @@ func main() {
 		log.Fatalf("%v does not exist!\n", inFname)
 	}
 
-	fmt.Printf("%v - %v bytes in", inFname, inFileInfo.Size())
+	fmt.Printf("%v - %v bytes in\n", inFname, inFileInfo.Size())
 
 	var outFname string
 
@@ -43,52 +43,19 @@ func main() {
 		log.Fatal(err)
 	}
 
-	/*
-		data, err := ioutil.ReadAll(inFile)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		compressed := compress(data)
-		encoded := encode(compressed)
-	*/
-	outFile, err := os.Open(outFname)
+	outFile, err := os.Create(outFname)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	outCompressed := lzss.NewWriter(outFile, 4096)
+	outCompressed := lzss.NewWriter(outFile)
 
 	wrote, err := io.Copy(outCompressed, inFile)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	outFile.Close()
+	outCompressed.Close()
 
-	fmt.Printf("%v - %v bytes out", outFname, wrote)
+	fmt.Printf("%v - %v bytes out\n", outFname, wrote)
 }
-
-/*
-func compress(data []byte) []int {
-
-	compressed := []int{}
-
-	for _, b := range data {
-		compressed = append(compressed, int(b))
-	}
-
-	return compressed
-}
-
-func encode(compressed []int) []byte {
-
-	encoded := []byte{}
-
-	for _, i := range compressed {
-		encoded = append(encoded, byte(i))
-	}
-
-	return encoded
-}
-*/
