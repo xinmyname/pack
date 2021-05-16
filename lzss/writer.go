@@ -58,7 +58,7 @@ func NewWriterWindow(w io.Writer, windowLen int) io.WriteCloser {
 	}
 }
 
-func elementsInArrayPlusChar(checkElements []int, char int, elements []int) int {
+func elementsInArray(checkElements []int, char int, elements []int) int {
 	i := 0
 	offset := 0
 
@@ -83,10 +83,6 @@ func elementsInArrayPlusChar(checkElements []int, char int, elements []int) int 
 	return -1
 }
 
-func elementsInArray(checkElements []int, elements []int) int {
-	return elementsInArrayPlusChar(checkElements, -1, elements)
-}
-
 func compress(textBytes []byte, maxSlidingWindowSize int) []int {
 	searchBuffer := make([]int, 0, maxSlidingWindowSize)
 	checkCharacters := make([]int, 0, maxSlidingWindowSize)
@@ -96,13 +92,15 @@ func compress(textBytes []byte, maxSlidingWindowSize int) []int {
 
 	for _, char := range textBytes {
 
-		if elementsInArrayPlusChar(checkCharacters, int(char), searchBuffer) == -1 || i == len(textBytes)-1 {
-			if i == len(textBytes)-1 && elementsInArrayPlusChar(checkCharacters, int(char), searchBuffer) != -1 {
+		index := elementsInArray(checkCharacters, int(char), searchBuffer)
+
+		if index == -1 || i == len(textBytes)-1 {
+			if i == len(textBytes)-1 && index != -1 {
 				checkCharacters = append(checkCharacters, int(char))
 			}
 
 			if len(checkCharacters) > 1 {
-				index := elementsInArray(checkCharacters, searchBuffer)
+				index = elementsInArray(checkCharacters, -1, searchBuffer)
 				offset := i - index - len(checkCharacters) - movedPast
 				length := len(checkCharacters)
 				token := ((offset & 0x7fff) << 16) | (length & 0xffff)
