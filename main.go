@@ -22,13 +22,11 @@ func main() {
 
 	inFname := os.Args[1]
 
-	inFileInfo, err := os.Stat(inFname)
+	_, err := os.Stat(inFname)
 
 	if os.IsNotExist(err) {
 		log.Fatalf("%v does not exist!\n", inFname)
 	}
-
-	fmt.Printf("%v - %v bytes in\n", inFname, inFileInfo.Size())
 
 	var outFname string
 
@@ -50,12 +48,10 @@ func main() {
 
 	outCompressed := lzss.NewWriter(outFile)
 
-	wrote, err := io.Copy(outCompressed, inFile)
+	_, err = io.Copy(outCompressed, inFile)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	outCompressed.Close()
-
-	fmt.Printf("%v - %v bytes out\n", outFname, wrote)
 }
