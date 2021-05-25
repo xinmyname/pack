@@ -1,59 +1,49 @@
 package lzss
 
 import (
-	"bufio"
 	"fmt"
 	"io"
+
+	"github.com/xinmyname/bitstream-go"
 )
 
-type writer interface {
-	io.ByteWriter
-	Flush() error
-}
-
 type compressor struct {
-	w         writer
+	bs        bitstream.Writer
 	windowLen int
 }
 
 func (c *compressor) Write(p []byte) (n int, err error) {
 
-	compressed := compress(p, 256)
+	compressed := compress(p, c.windowLen)
 
-	for _, c := range compressed {
-		if c > 255 {
-			length := c & 0xffff
-			offset := c >> 16
-
-			fmt.Printf("<%d,%d>", offset, length)
+	for _, token := range compressed {
+		if token > 255 {
+			length := token & 0xffff
+			offset := token >> 16
+			c.bs.WriteBit(1)
+			c.bs.WriteUint16BE(uint16(offset))
+			c.bs.WriteUint16BE(uint16(length))
 		} else {
-			fmt.Printf("%c", rune(c))
+			c.bs.WriteBit(0)
+			c.bs.WriteUint8(uint8(token))
 		}
 	}
 
-	for _, b := range p {
-		err = c.w.WriteByte(b)
-		if err != nil {
-			return n, err
-		}
-		n += 1
-	}
-
-	return n, err
+	return len(p), err
 }
 
 func (c *compressor) Close() error {
-	return c.w.Flush()
+	return c.bs.Flush()
 }
 
 func NewWriter(w io.Writer) io.WriteCloser {
-	return NewWriterWindow(w, 4096)
+	return NewWriterWindow(w, 256)
 }
 
 func NewWriterWindow(w io.Writer, windowLen int) io.WriteCloser {
 
 	return &compressor{
-		w:         bufio.NewWriter(w),
+		bs:        *bitstream.NewWriter(w),
 		windowLen: windowLen,
 	}
 }
