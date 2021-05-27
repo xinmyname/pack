@@ -1,33 +1,49 @@
 package lzss
 
 import (
-	"fmt"
 	"io"
 
 	"github.com/xinmyname/bitstream-go"
 )
 
+func NewWriter(w io.Writer) io.WriteCloser {
+	const maxWindowSize = 255
+
+	return &compressor{
+		bs:              *bitstream.NewWriter(w),
+		windowSize:      maxWindowSize,
+		searchBuffer:    make([]int, 0, maxWindowSize),
+		checkCharacters: make([]int, 0, maxWindowSize),
+	}
+}
+
 type compressor struct {
-	bs        bitstream.Writer
-	windowLen int
+	bs              bitstream.Writer
+	windowSize      int
+	searchBuffer    []int
+	checkCharacters []int
 }
 
 func (c *compressor) Write(p []byte) (n int, err error) {
 
-	compressed := compress(p, c.windowLen)
+	compressed := c.compress(p)
 
 	for _, token := range compressed {
-		if token > 255 {
-			length := token & 0xffff
-			offset := token >> 16
+
+		if token > 0xff {
 			c.bs.WriteBit(1)
-			c.bs.WriteUint16BE(uint16(offset))
-			c.bs.WriteUint16BE(uint16(length))
+			c.bs.WriteUint8(uint8(token >> 8))   // offset
+			c.bs.WriteUint8(uint8(token & 0xff)) // length
 		} else {
 			c.bs.WriteBit(0)
 			c.bs.WriteUint8(uint8(token))
 		}
 	}
+
+	// EOF sentinel
+	c.bs.WriteBit(1)
+	c.bs.WriteUint8(0)
+	c.bs.WriteUint8(0)
 
 	return len(p), err
 }
@@ -36,16 +52,47 @@ func (c *compressor) Close() error {
 	return c.bs.Flush()
 }
 
-func NewWriter(w io.Writer) io.WriteCloser {
-	return NewWriterWindow(w, 256)
-}
+func (c *compressor) compress(p []byte) []int {
 
-func NewWriterWindow(w io.Writer, windowLen int) io.WriteCloser {
+	output := make([]int, 0, c.windowSize)
 
-	return &compressor{
-		bs:        *bitstream.NewWriter(w),
-		windowLen: windowLen,
+	for pos, char := range p {
+
+		index := elementsInArray(c.checkCharacters, int(char), c.searchBuffer)
+
+		if index == -1 || pos == len(p)-1 {
+			if pos == len(p)-1 && index != -1 {
+				c.checkCharacters = append(c.checkCharacters, int(char))
+			}
+
+			if len(c.checkCharacters) > 1 {
+				index = elementsInArray(c.checkCharacters, -1, c.searchBuffer)
+				offset := len(c.searchBuffer) - index
+				length := len(c.checkCharacters)
+				token := (offset << 8) | (length & 0xff)
+				output = append(output, token)
+				c.searchBuffer = append(c.searchBuffer, c.checkCharacters...)
+			} else {
+				output = append(output, c.checkCharacters...)
+				c.searchBuffer = append(c.searchBuffer, c.checkCharacters...)
+			}
+
+			c.checkCharacters = c.checkCharacters[:0]
+		}
+
+		c.checkCharacters = append(c.checkCharacters, int(char))
+
+		if len(c.searchBuffer) >= c.windowSize {
+			diff := len(c.searchBuffer) - c.windowSize
+			c.searchBuffer = c.searchBuffer[diff:]
+		}
 	}
+
+	if len(c.checkCharacters) > 0 {
+		output = append(output, c.checkCharacters...)
+	}
+
+	return output
 }
 
 func elementsInArray(checkElements []int, char int, elements []int) int {
@@ -57,6 +104,7 @@ func elementsInArray(checkElements []int, char int, elements []int) int {
 	}
 
 	for _, element := range elements {
+
 		if len(checkElements) <= offset {
 			return i - len(checkElements)
 		}
@@ -71,59 +119,4 @@ func elementsInArray(checkElements []int, char int, elements []int) int {
 	}
 
 	return -1
-}
-
-func compress(textBytes []byte, maxSlidingWindowSize int) []int {
-	searchBuffer := make([]int, 0, maxSlidingWindowSize)
-	checkCharacters := make([]int, 0, maxSlidingWindowSize)
-	output := make([]int, 0, maxSlidingWindowSize)
-	i := 0
-	movedPast := 0
-
-	for _, char := range textBytes {
-
-		index := elementsInArray(checkCharacters, int(char), searchBuffer)
-
-		if index == -1 || i == len(textBytes)-1 {
-			if i == len(textBytes)-1 && index != -1 {
-				checkCharacters = append(checkCharacters, int(char))
-			}
-
-			if len(checkCharacters) > 1 {
-				index = elementsInArray(checkCharacters, -1, searchBuffer)
-				offset := i - index - len(checkCharacters) - movedPast
-				length := len(checkCharacters)
-				token := ((offset & 0x7fff) << 16) | (length & 0xffff)
-
-				pyToken := fmt.Sprintf("<%d,%d>", offset, length)
-				lenToken := len(pyToken)
-
-				if lenToken > length {
-					output = append(output, checkCharacters...)
-				} else {
-					output = append(output, token)
-				}
-
-				searchBuffer = append(searchBuffer, checkCharacters...)
-
-			} else {
-				output = append(output, checkCharacters...)
-				searchBuffer = append(searchBuffer, checkCharacters...)
-			}
-
-			checkCharacters = checkCharacters[:0]
-		}
-
-		checkCharacters = append(checkCharacters, int(char))
-
-		if len(searchBuffer) > maxSlidingWindowSize {
-			diff := len(searchBuffer) - maxSlidingWindowSize
-			movedPast += diff
-			searchBuffer = searchBuffer[diff:]
-		}
-
-		i += 1
-	}
-
-	return output
 }

@@ -6,52 +6,61 @@ import (
 	"log"
 	"os"
 	"pack/lzss"
-	"path/filepath"
-	"strings"
 )
 
 func main() {
 
 	if len(os.Args) < 2 {
-		fmt.Println("Usage: pack <input file name> [output file name]")
+		fmt.Println("Usage: pack [-u] <input file name>")
 		fmt.Println()
-		fmt.Println("       If no output file is specified, the output file name will be the same")
-		fmt.Println("       as the input file name with the .lzss extension.")
+		fmt.Println("    -u  Unpack file")
 		return
 	}
 
-	inFname := os.Args[1]
+	var srcPath string
+	unpack := false
 
-	_, err := os.Stat(inFname)
+	args := os.Args[1:]
+
+	for ; len(args) > 0; args = args[1:] {
+		if args[0] == "-u" {
+			unpack = true
+		} else {
+			srcPath = args[0]
+		}
+	}
+
+	_, err := os.Stat(srcPath)
 
 	if os.IsNotExist(err) {
-		log.Fatalf("%v does not exist!\n", inFname)
+		log.Fatalf("%v does not exist!\n", srcPath)
 	}
 
-	var outFname string
+	inFile, err := os.Open(srcPath)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	if len(os.Args) > 2 {
-		outFname = os.Args[2]
+	if unpack {
+
+		outUncompressed := lzss.NewReader(inFile)
+
+		_, err := io.Copy(os.Stdout, outUncompressed)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		outUncompressed.Close()
+
 	} else {
-		outFname = strings.TrimSuffix(inFname, filepath.Ext(inFname)) + ".lzss"
+
+		outCompressed := lzss.NewWriter(os.Stdout)
+
+		_, err = io.Copy(outCompressed, inFile)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		outCompressed.Close()
 	}
-
-	inFile, err := os.Open(inFname)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	outFile, err := os.Create(outFname)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	outCompressed := lzss.NewWriter(outFile)
-
-	_, err = io.Copy(outCompressed, inFile)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	outCompressed.Close()
 }
